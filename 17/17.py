@@ -9,11 +9,11 @@ def gen_next(cur):
   for pt  in cur:
     for dpt in itertools.product(range(-1, 2), repeat=len(pt)):
       npt = tuple(map(sum, zip(pt, dpt)))
-      neigh[npt] = neigh.get(npt, 0) + (0 if all(v == 0 for v in dpt) else 1)
+      neigh[npt] = neigh.get(npt, 0) + 1
   new = set()
   for pt in neigh:
     cnt = neigh[pt]
-    if cnt == 3 or (cnt == 2 and pt in cur):
+    if cnt == 3 or (cnt == 4 and pt in cur):
       new.add(pt)
   return new
       
