@@ -1,176 +1,139 @@
 #!/usr/bin/env python3
 
 import sys
-import re
 import functools
-import itertools
-import copy
+
 
 def parse_tile(s):
   lines = s.split('\n')
-  return int(lines[0].strip(':').split()[1]), lines[1:]
+  tile_id = int(lines[0].strip(':').split()[1])
+  return tile_id, list(map(list, lines[1:]))
 
-def get_borders_raw(tile):
-  yield tile[0]
-  yield ''.join(map(lambda x: x[0], tile))
-  yield tile[-1]
-  yield ''.join(map(lambda x: x[-1], tile))
+
+def read_tiles():
+  blocks = sys.stdin.read().strip().split("\n\n")
+  return {tile_id: tile for tile_id, tile in map(parse_tile, blocks)}
+
 
 def get_borders(tile):
-  for i, border in enumerate(get_borders_raw(tile)):
-    if border > border[::-1]:
-      yield -(i + 1), border[::-1]
-    else:
-      yield (i + 1), border
+  return [''.join(tile[0]),
+          ''.join(map(lambda x: x[0], tile)),
+          ''.join(tile[-1]),
+          ''.join(map(lambda x: x[-1], tile))]
+
+
+def normalize_border(border):
+  return min(border, border[::-1])
+
 
 def main():
-  blocks = sys.stdin.read().strip().split("\n\n")
-  tiles = {num: a for num, a in map(parse_tile, blocks)}
+  tiles = read_tiles()
 
   borders = dict()
-  for num, tile in tiles.items():
-    for i, border in get_borders(tile):
-      if border > border[::-1]:
-        borders.setdefault(border[::-1], []).append((num, i))
-      else:
-        borders.setdefault(border, []).append((num, i))
-#      borders.setdefault(border[::-1], []).append((num, -(i + 1)))
+  for tile_id, tile in tiles.items():
+    for border in get_borders(tile):
+      borders.setdefault(normalize_border(border), []).append(tile_id)
   print(borders)
   print(max(map(len, borders.values())))
 
-  """
-  print(3079, list(get_borders(tiles[3079])))
-  print(2311, list(get_borders(tiles[2311])))
-  for border in get_borders(tiles[3079]):
-    print(borders[border])
-  """
-
   cnt = dict()
-  for border, x in borders.items():
-    if len(x) == 1:
-#    if len(set(map(lambda y: y[0], x))) == 1:
-      cnt[x[0][0]] = cnt.get(x[0][0], 0) + 1
-  corners = [x for x, y in cnt.items() if y == 2]
+  for tile_id in [tile_ids[0] for tile_ids in borders.values() if len(tile_ids) == 1]:
+    cnt[tile_id] = cnt.get(tile_id, 0) + 1
+  corners = [tile_id for tile_id, uniq_count in cnt.items() if uniq_count == 2]
   print(corners)
   print(functools.reduce(lambda x, y: x * y, corners))
 
+
+
+  def rotate90(tile):
+    size = len(tile)
+    return [[tile[y][size - 1 - x] for y in range(size)] for x in range(size)]
+
+  def flip_sym(tile):
+    size = len(tile)
+    return [[tile[y][x] for y in range(size)] for x in range(size)]
+
+
+  def all_rotations(tile):
+    for i in range(2):
+      for j in range(4):
+        yield tile
+        tile = rotate90(tile)
+      tile = flip_sym(tile)
+
+
+  def tiles_with_border(border):
+    return borders[normalize_border(border)]
+
+  def another_tile_with_border(border, tile_id):
+    tile_ids = tiles_with_border(border)
+    if len(tile_ids) != 2 or tile_id not in tile_ids:
+      raise ValueError('Can not find unique another tile with border')
+    return sum(tile_ids) - tile_id
+
+
+  def put(tile_id, x, y):
+    for dx in range(k):
+      for dy in range(k):
+        field[x * k + dx][y * k + dy] = tiles[tile_id][dx + 1][dy + 1]
+
+    def is_good_with_neighbour(border_num, expected_border):
+      return lambda tile: get_borders(tile)[border_num] == expected_border
+
+    bs = get_borders(tiles[tile_id])
+    if y + 1 < n:
+      next_tile_id = another_tile_with_border(bs[3], tile_id)
+      rotate_and_put(next_tile_id, x, y + 1, is_good_with_neighbour(1, bs[3]))
+    if y == 0 and x + 1 < n:
+      next_tile_id = another_tile_with_border(bs[2], tile_id)
+      rotate_and_put(next_tile_id, x + 1, y, is_good_with_neighbour(0, bs[2]))
+
+
+  def rotate_and_put(tile_id, x, y, is_good_rotation):
+    for tile in all_rotations(tiles[tile_id]):
+      if is_good_rotation(tile):
+        tiles[tile_id] = tile
+        put(tile_id, x, y)
+        return
+    raise ValueEror('Can not put at (%d, %d)' % (x, y))
+
+
+  def put_all_from_corner(tile_id):
+    def is_good_at_corner(tile):
+      return all(map(lambda b: len(tiles_with_border(b)) == 1, get_borders(tile)[:2]))
+
+    rotate_and_put(tile_id, 0, 0, is_good_at_corner)
+
+
   n = int(len(tiles) ** 0.5)
   k = len(tiles[corners[0]][0]) - 2
-  kk = len(tiles[corners[0]][0])
-  a = [[None] * n for i in range(n)]
-  b = [[' '] * (n * k) for i in range(n * k)]
+  field = [[' '] * (n * k) for i in range(n * k)]
 
-  def rotate90(num):
-    kk = len(tiles[num])
-    tmp = [[' '] * kk for i in range(kk)]
-    for x in range(kk):
-      for y in range(kk):
-        tmp[x][y] = tiles[num][y][kk - 1 - x]
-    tiles[num] = [''.join(s) for s in tmp]
-
-  def flip_vert(num):
-    kk = len(tiles[num])
-    tmp = [[' '] * kk for i in range(kk)]
-    for x in range(kk):
-      for y in range(kk):
-        tmp[x][y] = tiles[num][x][kk - 1 - y]
-    tiles[num] = [''.join(s) for s in tmp]
-
-  def flip_sym(num):
-    kk = len(tiles[num])
-    tmp = [[' '] * kk for i in range(kk)]
-    for x in range(kk):
-      for y in range(kk):
-        tmp[x][y] = tiles[num][y][x]
-    tiles[num] = [''.join(s) for s in tmp]
-
-  def put(x, y, num):
-    print('put', x, y, num)
-    a[x][y] = num
-    for i in range(k):
-      for j in range(k):
-        b[x * k + i][y * k + j] = tiles[num][i + (kk - k) // 2][j + (kk - k) // 2]
+  put_all_from_corner(corners[0])
 
 
-  def try_all(num, func):
-    for _1 in range(1):
-      flip_sym(num)
-      for _2 in range(2):
-        flip_vert(num)
-        for _3 in range(4):
-          rotate90(num)
-          if func():
-            return
-
-  def find(x, y, num, zn, bb, sign):
-    def func():
-      bs = list(get_borders(tiles[num]))
-      print(bs)
-      if bs[zn][1] == bb and bs[zn][0] * sign > 0:
-        print('\n'.join(tiles[num]))
-        put(x, y, num)
-        return True
-    try_all(num, func)
-
-             
-
-  rot = 0
-  while True:
-    bs = list(get_borders(tiles[corners[0]]))
-    if len(borders[bs[0][1]]) == 1 and len(borders[bs[1][1]]) == 1:
-      break
-
-    rotate90(corners[0])
-  put(0, 0, corners[0])
-
-  for x in range(n):
-    for y in range(n):
-      print('\n'.join(map(lambda x: ''.join(x), b)))
-      cnum = a[x][y]
-      bs = list(get_borders(tiles[cnum]))
-      print(cnum, bs)
-      for _, bb in bs:
-        print(borders[bb])
-      if y + 1 < n:
-        bnum = list([num for num, _ in borders[bs[3][1]] if num != cnum])[0]
-        find(x, y + 1, bnum, 1, bs[3][1], bs[3][0])
-      if x + 1 < n:
-        bnum = list([num for num, _ in borders[bs[2][1]] if num != cnum])[0]
-        find(x + 1, y, bnum, 0, bs[2][1], bs[2][0])
-
-
-  def find_monsters(ans):
+  def find_monsters(field):
     mask = ['                  # ',
             '#    ##    ##    ###',
             ' #  #  #  #  #  #   ']
-    ZZZ = 999999
 
-    def func():
-      for x in range(n * k - len(mask)):
-        for y in range(n * k - len(mask[0])):
-          ok = True
+    monsters_count = 0
+    for x in range(n * k - len(mask)):
+      for y in range(n * k - len(mask[0])):
+        if all([mask[dx][dy] != '#' or field[x + dx][y + dy] != '.' for dy in range(len(mask[0])) for dx in range(len(mask))]):
+          monsters_count += 1
+
           for dx in range(len(mask)):
             for dy in range(len(mask[0])):
-              if mask[dx][dy] == '#' and tiles[ZZZ][x + dx][y + dy] == '.':
-                ok = False
-          if ok:
-            for dx in range(len(mask)):
-              for dy in range(len(mask[0])):
-                if mask[dx][dy] == '#':
-                  s = [ch for ch in tiles[ZZZ][x + dx]]
-                  s[y + dy] = 'O'
-                  tiles[ZZZ][x + dx] = ''.join(s)
-            print(x, y)
-            ans[0] += 1
+              if mask[dx][dy] == '#':
+                field[x + dx][y + dy] = 'O'
+    return monsters_count
 
-    tiles[ZZZ] = b
-    try_all(ZZZ, func)
 
-  ans = [0]
-  find_monsters(ans)
-  print(ans)
-  print('\n'.join(map(lambda x: ''.join(x), b)))
-  print(sum(map(lambda s: ''.join(s).count('#'), b)))
+  counts = list(map(find_monsters, all_rotations(field)))
+  print('\n'.join(map(lambda x: ''.join(x), field)))
+  print(counts)
+  print(sum(map(lambda s: ''.join(s).count('#'), field)))
 
 if __name__ == "__main__":
   main()
